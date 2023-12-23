@@ -1,47 +1,47 @@
 use std::error::Error;
 use std::net::{SocketAddr};
-use std::sync::Arc;
 use bytes::Bytes;
-use futures::{io, SinkExt, StreamExt};
-use futures::stream::SplitSink;
+use futures::{SinkExt, StreamExt};
+use futures::stream::{SplitSink, SplitStream};
 use tokio::io::{stdin, BufReader, AsyncBufReadExt};
 use tokio::net::TcpStream;
-use tokio::task::JoinHandle;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-struct Client {
-    lines: SplitSink<Framed<TcpStream, LengthDelimitedCodec>, Bytes>,
-    read_task: JoinHandle<()>,
+
+async fn connect(addr: SocketAddr) -> Result<(), Box<dyn Error>> {
+    /**let mut stream = match TcpStream::connect(addr).await {
+        Ok(stream) => stream,
+        Err(e) => return Err(e),
+    };**/
+
+    let stream = TcpStream::connect(addr).await?;
+
+    let mut lines = Framed::new(stream, LengthDelimitedCodec::new());
+
+    let (r, w) = lines.split();
+
+    tokio::try_join!(send_message(r), read_message(w));
+
+    Ok(())
 }
 
-impl Client {
-    async fn new(addr: SocketAddr) -> Result<Client, io::Error> {
-        let mut stream = match TcpStream::connect(addr).await {
-            Ok(stream) => stream,
-            Err(e) => return Err(e),
-        };
-
-        let lines = Framed::new(stream, LengthDelimitedCodec::new());
-
-        let (r, mut w) = lines.split();
-
-        let read_task = tokio::spawn(async move {
-           while let Some(Ok(msg)) = w.next().await {
-                if Some(msg.clone()).is_some() {
-                    println!("Message Received {}", String::from_utf8_lossy(&msg).to_string());
-                }
-           }
-        });
-
-        Ok(Client { lines: r, read_task })
-
+async fn send_message(mut r: SplitSink<Framed<TcpStream, LengthDelimitedCodec>, Bytes>) -> Result<(), Box<dyn Error>>{
+    let stdin = BufReader::new(stdin());
+    let mut stdin = stdin.lines();
+    while let Some(Ok(line)) = stdin.next_line().await.transpose() {
+        let message = Bytes::from(line);
+        r.send(message).await?;
     }
+    Ok(())
+}
 
-    async fn send_message(&mut self, msg: &Bytes) {
-        self.lines.send(msg.clone()).await;
+async fn read_message(mut w: SplitStream<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<(), Box<dyn Error>>{
+    while let Some(Ok(msg)) = w.next().await {
+        if Some(msg.clone()).is_some() {
+            println!("Message Received {}", String::from_utf8_lossy(&msg).to_string());
+        }
     }
-
-
+    Ok(())
 }
 
 
@@ -54,15 +54,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let addr = addr.parse::<SocketAddr>()?;
 
-    let mut client = Client::new(addr).await?;
-
-    let stdin = BufReader::new(stdin());
-    let mut lines = stdin.lines();
-
-    while let Some(Ok(line)) = lines.next_line().await.transpose() {
-        let message = Bytes::from(line);
-        client.send_message(&message).await;
-    }
+    connect(addr).await?;
 
     Ok(())
 }

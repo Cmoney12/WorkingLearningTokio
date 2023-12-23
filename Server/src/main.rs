@@ -27,9 +27,9 @@ impl ChatServer {
 
     async fn broadcast(&mut self, sender: SocketAddr, message: &Bytes) {
         for peer in self.peers.iter_mut() {
-            //if *peer.0 != sender {
+            if *peer.0 != sender {
                 let _ = peer.1.send(message.clone());
-            //}
+            }
         }
     }
 }
@@ -86,19 +86,25 @@ async fn process(
 
     loop {
         tokio::select! {
-        // Receive messages
-        recv_res = client.rx.recv() => match recv_res {
-                Some(msg) => {
+            Some(msg) = client.rx.recv() => {
+                client.frame.send(msg).await?;
+            }
+            result = client.frame.next() => match result {
+                Some(Ok(msg)) => {
                     let mut state = state.lock().await;
+                    //let msg = format!("{}: {}", username, msg);
+                    let msg = Bytes::from(format!("{}: {}", username, String::from_utf8_lossy(msg.as_ref())));
                     state.broadcast(addr, &msg).await;
+                }
+                Some(Err(e)) => {
+                    eprintln!("{}", e);
                 }
                 None => break,
             },
-            Some(Ok(msg)) = client.frame.next() => {
-                client.frame.send(msg.freeze()).await?;
-            }
         }
     }
+
+
 
     Ok(())
 
@@ -111,7 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:1235".to_string());
+        .unwrap_or_else(|| "0.0.0.0:1235".to_string());
 
     let listener = TcpListener::bind(addr).await?;
 
