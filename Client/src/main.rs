@@ -9,10 +9,6 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 
 async fn connect(addr: SocketAddr) -> Result<(), Box<dyn Error>> {
-    /**let mut stream = match TcpStream::connect(addr).await {
-        Ok(stream) => stream,
-        Err(e) => return Err(e),
-    };**/
 
     let stream = TcpStream::connect(addr).await?;
 
@@ -25,6 +21,7 @@ async fn connect(addr: SocketAddr) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+
 async fn send_message(mut r: SplitSink<Framed<TcpStream, LengthDelimitedCodec>, Bytes>) -> Result<(), Box<dyn Error>>{
     let stdin = BufReader::new(stdin());
     let mut stdin = stdin.lines();
@@ -35,10 +32,11 @@ async fn send_message(mut r: SplitSink<Framed<TcpStream, LengthDelimitedCodec>, 
     Ok(())
 }
 
+
 async fn read_message(mut w: SplitStream<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<(), Box<dyn Error>>{
     while let Some(Ok(msg)) = w.next().await {
         if Some(msg.clone()).is_some() {
-            println!("Message Received {}", String::from_utf8_lossy(&msg).to_string());
+            println!("{}", String::from_utf8_lossy(&msg).to_string());
         }
     }
     Ok(())

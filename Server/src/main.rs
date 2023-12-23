@@ -55,6 +55,7 @@ impl Client {
     }
 }
 
+
 async fn get_username(frame: &mut Framed<TcpStream, LengthDelimitedCodec> ) -> String {
     let username_prompt = Bytes::from("What is your Username");
     frame.send(username_prompt).await;
@@ -63,9 +64,9 @@ async fn get_username(frame: &mut Framed<TcpStream, LengthDelimitedCodec> ) -> S
         Some(Ok(msg)) => String::from_utf8_lossy(&msg).to_string(),
         _ => "".to_string(),
     };
-
     username
 }
+
 
 async fn process(
     state: Arc<Mutex<ChatServer>>,
@@ -92,7 +93,6 @@ async fn process(
             result = client.frame.next() => match result {
                 Some(Ok(msg)) => {
                     let mut state = state.lock().await;
-                    //let msg = format!("{}: {}", username, msg);
                     let msg = Bytes::from(format!("{}: {}", username, String::from_utf8_lossy(msg.as_ref())));
                     state.broadcast(addr, &msg).await;
                 }
@@ -104,10 +104,14 @@ async fn process(
         }
     }
 
-
+    {
+        let mut state = state.lock().await;
+        state.peers.remove(&addr);
+        let msg = Bytes::from(format!("{} has left the chat ", username));
+        state.broadcast(addr, &msg).await;
+    }
 
     Ok(())
-
 }
 
 
